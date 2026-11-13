@@ -1,44 +1,62 @@
-# Gemini Koyeb Proxy
+# Gemini Koyeb Proxy v2
 
-An authenticated, destination-restricted HTTPS CONNECT tunnel over WSS. Node.js 20+.
+Selective HTTPS CONNECT proxy with Koyeb relay via WebSocket Secure (WSS).
 
-## Koyeb deployment
-1. Push `package.json`, `server.js`, `client.js`, and `Dockerfile` to a **private** GitHub repository (or a public repo without secrets).
-2. Koyeb > Create Web Service > GitHub > Dockerfile; choose the **Free** instance, Frankfurt or Washington.
-3. Expose port `8000` as **HTTP**; route `/` to it. Set environment variable `PROXY_TOKEN` to a random 32+ character secret, e.g. `openssl rand -hex 32`.
-4. Deploy; open `https://YOUR-APP.koyeb.app/health` and expect `ok`.
+## Changes in v2
+- Adds Antigravity-related `daily-cloudcode-pa.googleapis.com`, `aicode.googleapis.com` and `*.googleapis.com` routing.
+- For all unlisted hosts, the **local** proxy connects DIRECT instead of returning 403, so global HTTPS proxy mode doesn't break ordinary HTTPS browsing.
+- Includes `gemini.pac` for browser-only selective routing and `PROXY_DEBUG=1` logging of routing decisions (no request contents or tokens).
+- Google target traffic fails closed: if Koyeb is unavailable, requests do not fall back to DIRECT.
 
-## Local client (Linux)
+## Deploy to Koyeb
+1. Upload project files to GitHub (do not commit secrets).
+2. Koyeb > Web Service > GitHub > Dockerfile, select the Free instance if available.
+3. Configure **HTTP port 8000**, route `/`, and `PROXY_TOKEN` (a random secret >=32 bytes, e.g. `openssl rand -hex 32`).
+4. Deploy and open `https://YOUR-SERVICE.koyeb.app/health`; expect `ok`.
+5. Redeploy is REQUIRED when upgrading from v1; `hosts.js` is now required on the server.
+
+## Linux local client
+Install Node.js >=20, then:
+
 ```bash
 npm install
-export PROXY_URL='wss://YOUR-APP.koyeb.app/tunnel'
+export PROXY_URL='wss://YOUR-SERVICE.koyeb.app/tunnel'
 export PROXY_TOKEN='SAME_SECRET_AS_KOYEB'
+export PROXY_DEBUG=1
 npm run client
 ```
 
-### Firefox
-Settings > Network Settings > Manual proxy configuration: HTTP Proxy `127.0.0.1`, Port `8888`; tick **Also use this proxy for HTTPS**. Other websites will be rejected; use a separate Firefox profile for Gemini or a PAC configuration for selective routing.
-
-### curl API test
+### Test API (with your Gemini API key)
 ```bash
-export GEMINI_API_KEY='YOUR_API_KEY'
+curl -v --max-time 35 -x http://127.0.0.1:8888 https://daily-cloudcode-pa.googleapis.com/ -o /dev/null
+curl -v --max-time 35 -x http://127.0.0.1:8888 https://aicode.googleapis.com/ -o /dev/null
+curl -v --max-time 35 -x http://127.0.0.1:8888 https://example.org/ -o /dev/null
 curl -x http://127.0.0.1:8888 -H "x-goog-api-key: $GEMINI_API_KEY" 'https://generativelanguage.googleapis.com/v1beta/models'
 ```
+`HTTP/1.1 200 Connection Established` means the tunnel worked; Google can still return 401/403/404 for the endpoint itself.
 
-### Selective Firefox PAC file
-Create `gemini.pac`:
-```js
-function FindProxyForURL(url, host) {
-  if (host === 'gemini.google.com' || host === 'aistudio.google.com' || host === 'generativelanguage.googleapis.com' || host === 'accounts.google.com' || host === 'www.google.com' || host === 'ogs.google.com' || host === 'ssl.gstatic.com' || host === 'www.gstatic.com' || host === 'fonts.gstatic.com' || host === 'fonts.googleapis.com' || host === 'lh3.googleusercontent.com' || host === 'play.google.com' || host === 'apis.google.com' || host === 'content.googleapis.com' || host === 'people.googleapis.com' || host === 'oauth2.googleapis.com' || dnsDomainIs(host, '.googleusercontent.com') || dnsDomainIs(host, '.gstatic.com')) return 'PROXY 127.0.0.1:8888';
-  return 'DIRECT';
-}
+### Firefox
+**Recommended:** use PAC rather than setting the whole browser through a proxy. Serve `gemini.pac` with
+`python3 -m http.server 8890 --bind 127.0.0.1` from this directory, then set Firefox > Network Settings > Automatic proxy configuration URL:
+`http://127.0.0.1:8890/gemini.pac`.
+
+Alternatively, configure an HTTP + HTTPS proxy `127.0.0.1:8888`. Unlisted **HTTPS** sites go direct, but plain HTTP URLs aren't supported by this CONNECT-only proxy; for normal browsing, PAC is preferable.
+
+### Antigravity (separate desktop app)
+Some Electron/VS Code-based apps use `HTTP_PROXY`/`HTTPS_PROXY`, but some networking components ignore them. To try launching from a shell:
+```bash
+export HTTP_PROXY='http://127.0.0.1:8888'
+export HTTPS_PROXY='http://127.0.0.1:8888'
+export http_proxy="$HTTP_PROXY"
+export https_proxy="$HTTPS_PROXY"
+# Replace with the installed Antigravity executable, e.g. `antigravity`:
+antigravity
 ```
-Host the PAC file locally via `python3 -m http.server 8890 --bind 127.0.0.1` in its directory, then set Firefox Automatic proxy configuration URL to `http://127.0.0.1:8890/gemini.pac`. Note that this routes shared Google login domains through Koyeb too.
+Do NOT set these vars globally at login until you have verified the app works. The app may need its own proxy settings. If the app cannot use CONNECT correctly, this project alone will not fix it.
 
-## Notes
-- Free instances sleep after one hour idle; cold starts and WebSocket interruptions are possible.
-- This tunnels TCP/443 only; UDP/QUIC and direct DNS are not tunneled. Disable HTTP/3 in Firefox if needed (`about:config` > `network.http.http3.enable` = false).
-- A Gemini login may use additional Google domains not in the allowlist. Extend the allowlist in BOTH JS files if necessary.
-- Koyeb IP address is a data center IP and might be blocked by Google; this does not guarantee access.
-- Some SDKs ignore `HTTPS_PROXY`; verify your specific SDK/IDE supports HTTP CONNECT proxying.
-- Do not commit tokens or API keys. HTTPS remains end-to-end between client and Google; Koyeb handles encrypted TCP bytes, not decrypted request contents.
+## Caveats and security
+- No full VPN/TUN, UDP/QUIC or remote DNS for DIRECT destinations. Other HTTPS sites connect from your own IP.
+- Koyeb free instance can sleep, close WebSockets or be blocked by Google. Google account/region checks can differ from the UI displayed.
+- Koyeb relay only accepts restricted Google domain destinations on port 443; do not change it into an open public relay.
+- Local HTTP proxy listens **only on 127.0.0.1**. HTTPS payload stays encrypted end-to-end to the destination.
+- If no `RELAY` line appears in `PROXY_DEBUG=1` when using Antigravity, its traffic is not using this local proxy.

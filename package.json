@@ -1,1 +1,9 @@
-{"name":"gemini-koyeb-proxy","version":"1.0.0","private":true,"type":"module","scripts":{"server":"node server.js","client":"node client.js"},"engines":{"node":">=20"},"dependencies":{"ws":"^8.18.0"}}
+{
+  "name": "gemini-koyeb-proxy",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "server": "node server.js", "client": "node client.js", "test": "node --test" },
+  "engines": { "node": ">=20" },
+  "dependencies": { "ws": "^8.18.0" }
+}
