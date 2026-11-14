@@ -6,9 +6,9 @@ const EXACT = new Set([
   'aicode.googleapis.com','content.googleapis.com','people.googleapis.com',
   'oauth2.googleapis.com','fonts.googleapis.com','fonts.gstatic.com',
   'ssl.gstatic.com','www.gstatic.com','lh3.googleusercontent.com',
-  'play.google.com','accounts.youtube.com'
+  'play.google.com','accounts.youtube.com','clients6.google.com'
 ]);
-const SUFFIXES = ['.googleapis.com','.gstatic.com','.googleusercontent.com'];
+const SUFFIXES = ['.googleapis.com','.gstatic.com','.googleusercontent.com','.clients6.google.com'];
 export function relayHost(host) {
   if (typeof host !== 'string') return false;
   host = host.toLowerCase().replace(/\.$/, '');

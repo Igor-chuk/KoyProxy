@@ -1,6 +1,6 @@
 {
   "name": "gemini-koyeb-proxy",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "scripts": { "server": "node server.js", "client": "node client.js", "test": "node --test" },
